@@ -10,3 +10,6 @@ wheels/
 .venv/
 *.pyc
 .env
+
+# Milvus Lite local vector database
+data/milvus_lite.db/

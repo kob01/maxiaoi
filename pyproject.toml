@@ -3,7 +3,7 @@ name = "mxi"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "a2a-sdk[http-server]>=0.3.0,<0.4.0",
     "fastapi>=0.115.0",
@@ -26,3 +26,10 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "uvicorn[standard]>=0.30.0",
 ]
+
+[tool.uv]
+# 设置默认镜像源（替代官方 PyPI）
+index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+
+# 如果需要额外的镜像源（备用），可以使用 extra-index-url
+# extra-index-url = ["https://mirrors.aliyun.com/pypi/simple/"]
