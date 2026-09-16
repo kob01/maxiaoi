@@ -1,0 +1,7 @@
+# syntax=docker/dockerfile:1
+# 基础镜像走国内镜像源,可用 --build-arg BASE_IMAGE=... 覆盖。
+# 备选: docker.1ms.run/python:3.11-slim | mirror.baidubce.com/library/python:3.11-slim
+
+docker.m.daocloud.io/library/python:3.11-slim
+
+# pip 使用清华源,国内构建提速;可用 --build-arg PIP_INDEX_URL=... 覆盖

@@ -1,0 +1,5 @@
+data/milvus_lite.db
+logs/
+__pycache__/
+*.pyc
+.env

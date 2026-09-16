@@ -1,0 +1,30 @@
+# Core framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+httpx>=0.27.0
+
+# Agent orchestration
+langgraph>=0.2.60
+langchain>=0.3.7
+langchain-core>=0.3.15
+langchain-community>=0.3.7
+langchain-ollama>=0.2.1
+
+# MCP (Model Context Protocol) - pin 1.x: FastMCP high-level API (renamed in mcp 2.x)
+mcp>=1.10.0,<2
+langchain-mcp-adapters>=0.1.0
+
+# A2A (Agent2Agent Protocol) - pin 0.3.x: JSON-RPC 2.0 over Streamable HTTP + SSE
+# (a2a-sdk 1.x switched to a protobuf-based v1.0 spec and dropped A2AStarletteApplication)
+a2a-sdk[http-server]>=0.3.0,<0.4.0
+
+# RAG stack
+pymilvus[milvus_lite]>=2.4.8,<3  # milvus-lite is an optional extra since pymilvus 2.5
+rank_bm25>=0.2.2
+jieba>=0.42.1
+pypdf>=5.0.0
+python-docx>=1.1.2
+openpyxl>=3.1.5
+python-multipart>=0.0.9

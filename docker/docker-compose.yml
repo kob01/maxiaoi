@@ -1,0 +1,80 @@
+x-build: &build
+  context: ..
+  dockerfile: docker/Dockerfile
+  args:
+    # 国内镜像源,可用环境变量覆盖: BASE_IMAGE=... docker compose build
+    BASE_IMAGE: ${BASE_IMAGE:-docker.m.daocloud.io/library/python:3.11-slim}
+    PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+
+services:
+  hr-mcp:
+    build: *build
+    command: python -m app.mcp_servers.hr_server
+    ports: ["8001:8001"]
+    networks: [mxi]
+
+  finance-mcp:
+    build: *build
+    command: python -m app.mcp_servers.finance_server
+    ports: ["8002:8002"]
+    networks: [mxi]
+
+  hr-agent:
+    build: *build
+    command: python -m app.agents.hr_agent.server
+    ports: ["9001:9001"]
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      HR_MCP_URL: http://hr-mcp:8001/mcp
+      HR_AGENT_URL: http://hr-agent:9001
+      AUDIT_LOG_PATH: /data/logs/audit.jsonl
+    volumes:
+      - ../logs:/data/logs
+    depends_on: [hr-mcp]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [mxi]
+
+  finance-agent:
+    build: *build
+    command: python -m app.agents.finance_agent.server
+    ports: ["9002:9002"]
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      FINANCE_MCP_URL: http://finance-mcp:8002/mcp
+      FINANCE_AGENT_URL: http://finance-agent:9002
+      AUDIT_LOG_PATH: /data/logs/audit.jsonl
+    volumes:
+      - ../logs:/data/logs
+    depends_on: [finance-mcp]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [mxi]
+
+  assistant:
+    build: *build
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports: ["8000:8000"]
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      LLM_MODEL: ${LLM_MODEL:-qwen3.5}
+      INTENT_MODEL: ${INTENT_MODEL:-qwen3.5}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-m3}
+      RERANK_MODEL: ${RERANK_MODEL:-dengcao/bge-reranker-v2-m3}
+      MILVUS_LITE_URI: /data/milvus_lite.db
+      HR_MCP_URL: http://hr-mcp:8001/mcp
+      FINANCE_MCP_URL: http://finance-mcp:8002/mcp
+      HR_AGENT_URL: http://hr-agent:9001
+      FINANCE_AGENT_URL: http://finance-agent:9002
+      AUDIT_LOG_PATH: /data/logs/audit.jsonl
+    volumes:
+      - ../data:/data
+      - ../logs:/data/logs
+    depends_on: [hr-agent, finance-agent]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [mxi]
+
+networks:
+  mxi:
+    driver: bridge

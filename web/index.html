@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>马小i · 企业智能助手</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; background:#f3f5f9; height:100vh; display:flex; flex-direction:column; }
+  header { background:#1f3a93; color:#fff; padding:14px 24px; font-size:18px; font-weight:600; display:flex; justify-content:space-between; align-items:center; }
+  header .meta { font-size:12px; font-weight:400; opacity:.85; display:flex; gap:8px; align-items:center; }
+  header select, header input { font-size:12px; padding:3px 6px; border-radius:4px; border:none; }
+  #chat { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:14px; }
+  .msg { max-width:72%; padding:10px 14px; border-radius:12px; line-height:1.6; white-space:pre-wrap; word-break:break-word; font-size:14px; }
+  .user { align-self:flex-end; background:#1f6feb; color:#fff; border-bottom-right-radius:2px; }
+  .bot { align-self:flex-start; background:#fff; border:1px solid #e3e6ee; border-bottom-left-radius:2px; }
+  .tag { display:inline-block; font-size:11px; padding:1px 8px; border-radius:10px; margin-bottom:6px; color:#fff; }
+  .tag.assistant_kb { background:#2da44e; } .tag.mcp_tool { background:#bf8700; }
+  .tag.a2a_agent { background:#8250df; } .tag.direct { background:#57606a; }
+  footer { padding:12px 20px; background:#fff; border-top:1px solid #e3e6ee; display:flex; gap:10px; }
+  #input { flex:1; border:1px solid #d0d7de; border-radius:8px; padding:10px 14px; font-size:14px; outline:none; }
+  #input:focus { border-color:#1f6feb; }
+  button { background:#1f6feb; color:#fff; border:none; border-radius:8px; padding:0 22px; font-size:14px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .hint { font-size:12px; color:#888; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <span>马小i · 企业智能助手</span>
+  <span class="meta">
+    工号 <input id="userId" value="E10001" size="8">
+    角色
+    <select id="role">
+      <option value="employee">员工</option>
+      <option value="manager">经理</option>
+      <option value="hr">HR</option>
+      <option value="finance">财务</option>
+      <option value="admin">管理员</option>
+    </select>
+  </span>
+</header>
+<div id="chat">
+  <div class="msg bot"><span class="tag direct">马小i</span><br>你好,我是企业智能助手马小i。可以问我制度政策(如"年假有几天"),也可以直接说"我要报销""帮我开在职证明"。</div>
+</div>
+<footer>
+  <input id="input" placeholder="请输入消息,回车发送…" autocomplete="off">
+  <button id="send">发送</button>
+</footer>
+<div class="hint">Assistant 统一入口 · 知识库 / MCP 工具 / A2A 专业智能体分层调度</div>
+<script>
+const chat = document.getElementById('chat');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+const sessionId = 'web-' + Math.random().toString(36).slice(2, 10);
+
+function addMsg(text, cls, tagText, tagCls) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls;
+  if (tagText) {
+    const tag = document.createElement('span');
+    tag.className = 'tag ' + tagCls;
+    tag.textContent = tagText;
+    div.appendChild(tag);
+    div.appendChild(document.createElement('br'));
+  }
+  div.appendChild(document.createTextNode(text));
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+async function send() {
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  addMsg(text, 'user');
+  sendBtn.disabled = true;
+  const pending = addMsg('思考中…', 'bot', '马小i', 'direct');
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        session_id: sessionId,
+        user_id: document.getElementById('userId').value || 'anonymous',
+        role: document.getElementById('role').value,
+        message: text
+      })
+    });
+    const data = await resp.json();
+    pending.remove();
+    if (!resp.ok) { addMsg('服务异常: ' + (data.detail || resp.status), 'bot', '错误', 'direct'); return; }
+    const routeNames = {assistant_kb:'知识库', mcp_tool:'MCP工具', a2a_agent:'专业智能体·'+(data.target||''), direct:'直答'};
+    addMsg(data.answer, 'bot', routeNames[data.route] || data.route, data.route);
+  } catch (e) {
+    pending.remove();
+    addMsg('网络错误: ' + e.message, 'bot', '错误', 'direct');
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+sendBtn.onclick = send;
+input.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+</script>
+</body>
+</html>

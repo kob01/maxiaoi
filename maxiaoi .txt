@@ -1,0 +1,48 @@
+【角色与目标】 
+ 你是一名资深 LLM 应用架构工程师。请基于以下架构蓝图，搭建一个企业级 
+ 多智能体 AI 助手系统（参考马上消费"马小i"的公开技术架构）。 
+ 【核心架构要求】 
+1. 采用 "Assistant-Agent" 一入口多智能体模式： 
+  ○ 用户仅面对唯一的 Assistant 助手（统一入口） 
+  ○ Assistant 根据任务复杂度分层调度： 
+a. 简单查询 → 直接由 Assistant 基于知识库回答 
+b. 复杂操作 → Assistant 通过 MCP 协议调用工具/业务系统 API 
+c. 专业任务 → Assistant 通过 A2A 协议委派给专业 Agent 执行
+2. 底座模型：qwen3.5
+3. RAG 知识底座： 
+  ○ 知识来源：企业制度文档、FAQ、知识图谱 
+  ○ Embedding 模型：bge-m3
+  ○ 向量数据库：Milvus Lite 
+  ○ 支持混合检索（向量 + BM25）+ Rerank（dengcao/bge-reranker-v2-m3） 
+  ○ 知识库需支持多模态（文本、视频转议程结构化入库）与动态更新
+4. MCP 工具调用层： 
+  ○ 遵循 Model Context Protocol 规范，实现 MCP Server 封装业务工具 
+  ○ 首批需封装的工具：HR工单系统、财务报销
+5. A2A 多智能体协作层： 
+  ○ 遵循 Agent2Agent 协议规范，每个 Agent 暴露 Agent Card 
+  ○ 首批需实现的专业 Agent：HR_Agent、Finance_Agent
+6. 对话管理： 
+  ○ 支持多轮对话、上下文记忆、意图识别 
+  ○ 意图识别模型：qwen3.5 
+  ○ 记忆策略：如短期对话记忆 + 会话摘要长期记忆
+7. 安全与治理： 
+  ○ Agent 行为全链路日志留痕 
+  ○ 权限分级：不同角色可调用的工具/Agent 白名单 
+  ○ 敏感信息脱敏（金融/HR 数据）
+ 【技术栈】 
+● 后端框架：FastAPI（服务层）+ LangGraph（Agent 编排层） 
+● MCP SDK：官方 MCP Python SDK（pip install mcp，即 modelcontextprotocol/python-sdk，Server 端用其内置的 FastMCP 高层 API，Client 端配 langchain-mcp-adapters） 
+● A2A 实现：官方 a2a-sdk（pip install a2a-sdk，Google 发起、Linux Foundation 托管）+ LangGraph Agent Server 的 A2A 端点（Agent Card 挂 /.well-known/，JSON-RPC 2.0 over Streamable HTTP + SSE） 
+● 前端：Web 聊天界面 
+● 部署：Docker + K8s
+ 【交付物】 
+1. 完整项目目录结构与模块划分 
+2. Assistant 调度核心代码（含 MCP Client / A2A Client） 
+3. 至少一个专业 Agent 的完整实现示例（含 Agent Card 定义） 
+4. RAG 知识库构建脚本（文档解析 → 切分 → 向量化 → 入库） 
+5. 一个端到端 demo：用户输入"我要报销" → Assistant 识别 →
+A2A 委派 Finance_Agent → MCP 调用财务系统 → 返回办理结果 
+6. Docker Compose 一键启动脚本
+ 【约束】 
+● 代码需包含完整类型注解与 docstring 
+● MCP / A2A 部分必须严格遵循协议规范，不得私自简化
