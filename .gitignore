@@ -9,7 +9,7 @@ wheels/
 # .gitignore
 .venv/
 *.pyc
-.env
+logs/
 
 # Milvus Lite local vector database
 data/milvus_lite.db/
