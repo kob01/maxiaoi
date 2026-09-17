@@ -7,9 +7,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Central configuration for the whole platform."""
+    """Central configuration for the whole platform.
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    Real environment variables take precedence over the .env files
+    (.env and docker/.env are both supported for local convenience).
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=(".env", "docker/.env"), env_file_encoding="utf-8", extra="ignore"
+    )
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
@@ -27,6 +33,24 @@ class Settings(BaseSettings):
     # Rerank fails -> graceful fallback to RRF fusion order (e.g. Windows
     # Ollama llama.cpp crashes on bge-reranker GGUF); set false to skip.
     rerank_enabled: bool = True
+
+    # Document upload & metadata (MySQL)
+    # 密码经环境变量 MYSQL_PASSWORD 注入(优先真实环境变量, 其次 .env 文件);
+    # pydantic-settings 统一解析, 不落代码库(.env 已被 .gitignore 排除)。
+    mysql_host: str = "47.116.208.170"
+    mysql_port: int = 3306
+    mysql_user: str = "sql47_116_208_1"
+    mysql_password: str = ""
+    mysql_database: str = "sql47_116_208_1"
+    mysql_connect_timeout: int = 10
+    upload_dir: str = "./data/uploads"
+    upload_max_mb: int = 50
+    # Vision model used to caption uploaded images (needs `ollama pull qwen3-vl`)
+    vision_model: str = "qwen3-vl"
+    vision_timeout: int = 300
+    # Parent-child chunking: a section block larger than this is window-split
+    # into child chunks; smaller blocks stay a single child under the parent.
+    parent_chunk_max: int = 1200
 
     # Assistant service
     assistant_host: str = "0.0.0.0"

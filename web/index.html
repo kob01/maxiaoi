@@ -38,6 +38,7 @@
       <option value="finance">财务</option>
       <option value="admin">管理员</option>
     </select>
+    <a href="/upload" style="color:#fff;font-size:12px;">文档管理 →</a>
   </span>
 </header>
 <div id="chat">
@@ -92,7 +93,23 @@ async function send() {
     pending.remove();
     if (!resp.ok) { addMsg('服务异常: ' + (data.detail || resp.status), 'bot', '错误', 'direct'); return; }
     const routeNames = {assistant_kb:'知识库', mcp_tool:'MCP工具', a2a_agent:'专业智能体·'+(data.target||''), direct:'直答'};
-    addMsg(data.answer, 'bot', routeNames[data.route] || data.route, data.route);
+    const div = addMsg(data.answer, 'bot', routeNames[data.route] || data.route, data.route);
+    const docs = (data.metadata && data.metadata.docs) || [];
+    if (docs.length) {
+      const seen = new Set();
+      const cites = docs.filter(d => { if (seen.has(d.doc_key)) return false; seen.add(d.doc_key); return true; })
+        .map(d => {
+          let s = '《' + d.title + '》';
+          if (d.section) s += ' ' + d.section;
+          if (d.page_no > 0) s += ' 第' + d.page_no + '页';
+          if (d.tags && d.tags.length) s += ' [' + d.tags.join(', ') + ']';
+          return s;
+        });
+      const citeDiv = document.createElement('div');
+      citeDiv.style.cssText = 'font-size:11px;color:#888;margin-top:6px;';
+      citeDiv.textContent = '📎 参考来源: ' + cites.join(' ; ');
+      div.appendChild(citeDiv);
+    }
   } catch (e) {
     pending.remove();
     addMsg('网络错误: ' + e.message, 'bot', '错误', 'direct');

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文档管理 · 马小i</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; background:#f3f5f9; min-height:100vh; display:flex; flex-direction:column; }
+  header { background:#1f3a93; color:#fff; padding:14px 24px; font-size:18px; font-weight:600; display:flex; justify-content:space-between; align-items:center; }
+  header a { color:#fff; font-size:13px; font-weight:400; text-decoration:none; opacity:.9; }
+  header a:hover { opacity:1; text-decoration:underline; }
+  header .meta { display:flex; gap:10px; align-items:center; font-size:12px; font-weight:400; }
+  header input { font-size:12px; padding:3px 6px; border-radius:4px; border:none; }
+  main { flex:1; padding:20px; max-width:1000px; width:100%; margin:0 auto; }
+  .card { background:#fff; border:1px solid #e3e6ee; border-radius:12px; padding:18px; margin-bottom:18px; }
+  .card h2 { font-size:15px; margin-bottom:12px; color:#1f3a93; }
+  #dropzone { border:2px dashed #b9c4dd; border-radius:10px; padding:34px; text-align:center; color:#67718a; cursor:pointer; transition:.2s; }
+  #dropzone.hover { border-color:#1f6feb; background:#f0f5ff; }
+  #dropzone p { font-size:13px; line-height:1.8; }
+  .accept { font-size:11px; color:#9aa3b8; margin-top:6px; }
+  .file-item { border:1px solid #e3e6ee; border-radius:10px; padding:12px 14px; margin-top:12px; }
+  .file-head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  .file-name { font-size:14px; font-weight:600; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; color:#fff; }
+  .badge.new { background:#2da44e; } .badge.overwrite { background:#bf8700; }
+  .badge.modality { background:#57606a; }
+  .status { font-size:12px; color:#67718a; }
+  .status.err { color:#cf222e; }
+  .preview { font-size:12px; color:#67718a; background:#f6f8fa; border-radius:6px; padding:8px 10px; margin-top:8px; max-height:90px; overflow:auto; white-space:pre-wrap; }
+  .tags-row { margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .tag-chip { display:inline-flex; align-items:center; gap:4px; font-size:12px; border:1px solid #b9c4dd; border-radius:14px; padding:3px 10px; cursor:pointer; user-select:none; }
+  .tag-chip.on { background:#1f6feb; border-color:#1f6feb; color:#fff; }
+  .tags-row input { border:1px solid #d0d7de; border-radius:8px; padding:5px 10px; font-size:12px; width:180px; }
+  button { background:#1f6feb; color:#fff; border:none; border-radius:8px; padding:7px 18px; font-size:13px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.ghost { background:#fff; color:#1f6feb; border:1px solid #1f6feb; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #eef1f6; }
+  th { color:#67718a; font-weight:500; font-size:12px; }
+  .tag-pill { display:inline-block; background:#eef2ff; color:#1f3a93; border-radius:10px; padding:1px 8px; font-size:11px; margin:1px 2px; }
+  .empty { color:#9aa3b8; font-size:13px; padding:14px 0; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <span>文档管理 · 知识库</span>
+  <span class="meta">
+    工号 <input id="uploader" value="E10001" size="8">
+    <a href="/">← 返回聊天</a>
+  </span>
+</header>
+<main>
+  <div class="card">
+    <h2>上传文档</h2>
+    <div id="dropzone">
+      <p>点击选择或拖拽文件到此处(可多选)</p>
+      <p class="accept">支持 txt / md / pdf / docx / pptx / xlsx / srt / vtt / jpg / png / webp / bmp,单文件 ≤50MB</p>
+    </div>
+    <input type="file" id="fileInput" multiple hidden
+      accept=".txt,.md,.pdf,.docx,.pptx,.xlsx,.srt,.vtt,.jpg,.jpeg,.png,.webp,.bmp">
+    <div id="files"></div>
+  </div>
+
+  <div class="card">
+    <h2>已入库文档 <button class="ghost" id="refresh" style="float:right">刷新</button></h2>
+    <table>
+      <thead><tr><th>名称</th><th>类型</th><th>模态</th><th>块数</th><th>标签</th><th>上传人</th><th>更新时间</th></tr></thead>
+      <tbody id="docList"></tbody>
+    </table>
+    <div class="empty" id="emptyHint">暂无文档</div>
+  </div>
+</main>
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const filesBox = document.getElementById('files');
+const uploader = () => document.getElementById('uploader').value || 'anonymous';
+
+dropzone.onclick = () => fileInput.click();
+dropzone.ondragover = e => { e.preventDefault(); dropzone.classList.add('hover'); };
+dropzone.ondragleave = () => dropzone.classList.remove('hover');
+dropzone.ondrop = e => { e.preventDefault(); dropzone.classList.remove('hover'); handleFiles(e.dataTransfer.files); };
+fileInput.onchange = () => handleFiles(fileInput.files);
+
+function el(tag, cls, text) {
+  const d = document.createElement(tag);
+  if (cls) d.className = cls;
+  if (text !== undefined) d.textContent = text;
+  return d;
+}
+
+async function handleFiles(fileList) {
+  for (const file of fileList) {
+    const item = el('div', 'file-item');
+    const head = el('div', 'file-head');
+    head.appendChild(el('span', 'file-name', file.name));
+    const status = el('span', 'status', '上传解析中…');
+    head.appendChild(status);
+    item.appendChild(head);
+    filesBox.appendChild(item);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('uploader', uploader());
+      const resp = await fetch('/api/docs/upload', { method: 'POST', body: fd });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || resp.status);
+      renderParsed(item, head, status, file.name, data);
+    } catch (e) {
+      status.textContent = '失败: ' + e.message;
+      status.classList.add('err');
+    }
+  }
+}
+
+function renderParsed(item, head, status, filename, data) {
+  status.textContent = data.overwritten ? '已存在同名文档, 确认后将覆盖更新' : '解析完成, 请选择标签';
+  const badge = el('span', 'badge ' + (data.overwritten ? 'overwrite' : 'new'),
+                   data.overwritten ? '覆盖更新' : '新文档');
+  head.insertBefore(badge, status);
+  head.appendChild(el('span', 'badge modality', data.modality));
+
+  if (data.preview) item.appendChild(el('div', 'preview', data.preview + (data.preview_len > 500 ? ' …' : '')));
+
+  const tagsRow = el('div', 'tags-row');
+  tagsRow.appendChild(el('span', '', '分类标签(可多选):'));
+  const selected = new Set();
+  const mkChip = (name, on) => {
+    const chip = el('span', 'tag-chip' + (on ? ' on' : ''), name);
+    if (on) selected.add(name);
+    chip.onclick = () => {
+      if (selected.has(name)) { selected.delete(name); chip.classList.remove('on'); }
+      else { selected.add(name); chip.classList.add('on'); }
+    };
+    tagsRow.appendChild(chip);
+  };
+  (data.suggested_tags || []).forEach(t => mkChip(t, true));
+
+  const customInput = el('input');
+  customInput.placeholder = '自定义标签, 回车添加';
+  customInput.onkeydown = e => {
+    if (e.key === 'Enter' && customInput.value.trim()) {
+      const v = customInput.value.trim();
+      if (!selected.has(v)) mkChip(v, true);
+      customInput.value = '';
+    }
+  };
+  tagsRow.appendChild(customInput);
+
+  const btn = el('button', '', '确认入库');
+  btn.onclick = async () => {
+    btn.disabled = true; status.textContent = '入库中(切分+向量化)…';
+    try {
+      const resp = await fetch('/api/docs/ingest', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          doc_key: data.doc_key, filename: data.filename,
+          tags: [...selected], uploader: uploader()
+        })
+      });
+      const res = await resp.json();
+      if (!resp.ok) throw new Error(res.detail || resp.status);
+      status.textContent = `入库成功: ${res.chunk_count} 个知识块, 标签[${(res.tags||[]).join(', ')}]`;
+      btn.remove(); tagsRow.querySelectorAll('.tag-chip').forEach(c => c.onclick = null);
+      loadDocs();
+    } catch (e) {
+      status.textContent = '入库失败: ' + e.message;
+      status.classList.add('err');
+      btn.disabled = false;
+    }
+  };
+  tagsRow.appendChild(btn);
+  item.appendChild(tagsRow);
+}
+
+async function loadDocs() {
+  const tbody = document.getElementById('docList');
+  const empty = document.getElementById('emptyHint');
+  try {
+    const docs = await (await fetch('/api/docs')).json();
+    tbody.innerHTML = '';
+    empty.style.display = docs.length ? 'none' : 'block';
+    for (const d of docs) {
+      const tr = el('tr');
+      tr.appendChild(el('td', '', d.name + d.ext));
+      tr.appendChild(el('td', '', d.ext));
+      tr.appendChild(el('td', '', d.modality));
+      tr.appendChild(el('td', '', String(d.chunk_count)));
+      const tagTd = el('td');
+      (d.tags || []).forEach(t => tagTd.appendChild(el('span', 'tag-pill', t)));
+      tr.appendChild(tagTd);
+      tr.appendChild(el('td', '', d.created_by));
+      tr.appendChild(el('td', '', d.updated_at));
+      tbody.appendChild(tr);
+    }
+  } catch (e) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = '文档列表加载失败: ' + e.message;
+  }
+}
+document.getElementById('refresh').onclick = loadDocs;
+loadDocs();
+</script>
+</body>
+</html>
