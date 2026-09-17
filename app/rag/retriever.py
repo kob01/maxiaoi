@@ -1,9 +1,14 @@
-"""Hybrid retrieval pipeline: dense (Milvus) + sparse (BM25) -> RRF -> rerank."""
+"""Hybrid retrieval pipeline: dense (Milvus) + sparse (BM25) -> RRF -> rerank.
+
+Retrieval operates on child chunks only (`is_parent == 0` filter); hit
+children are then assembled back into their parent section blocks so the LLM
+receives complete section context instead of truncated fragments.
+"""
 
 from __future__ import annotations
 
 import logging
-from typing import Sequence
+from typing import Any, Sequence
 
 from app.config import get_settings
 from app.rag.bm25 import BM25Retriever
@@ -52,30 +57,11 @@ class HybridRetriever:
         self.reranker = OllamaReranker()
 
     def rebuild_bm25(self) -> None:
-        """Rebuild BM25 index from everything stored in Milvus."""
-        # Milvus Lite: query all entities (fine for SME-scale corpora).
-        results = self.store.client.query(
-            collection_name=self.store.collection_name,
-            filter="chunk_id != ''",
-            output_fields=["chunk_id", "doc_id", "title", "content", "source", "modality"],
-            limit=16384,
-        )
-        self.bm25.rebuild(
-            [
-                KnowledgeChunk(
-                    chunk_id=r["chunk_id"],
-                    doc_id=r["doc_id"],
-                    title=r["title"],
-                    content=r["content"],
-                    source=r["source"],
-                    modality=r.get("modality", "text"),
-                )
-                for r in results
-            ]
-        )
+        """Rebuild BM25 index from child chunks stored in Milvus."""
+        self.bm25.rebuild(self.store.iter_child_chunks())
 
     async def retrieve(self, query: str, top_k: int | None = None, top_n: int | None = None) -> list[KnowledgeChunk]:
-        """Full hybrid pipeline for one query.
+        """Full hybrid pipeline for one query (child-chunk granularity).
 
         Args:
             query: User query text.
@@ -83,7 +69,7 @@ class HybridRetriever:
             top_n: Final chunks after rerank (default: settings).
 
         Returns:
-            Reranked knowledge chunks.
+            Reranked child chunks.
         """
         top_k = top_k or self._settings.rag_top_k
         top_n = top_n or self._settings.rerank_top_n
@@ -100,9 +86,47 @@ class HybridRetriever:
             logger.warning("rerank failed, fallback to RRF fusion order: %s", exc)
             return fused[:top_n]
 
-    def format_context(self, chunks: Sequence[KnowledgeChunk]) -> str:
-        """Render chunks as grounded context for the LLM prompt."""
+    def assemble_parents(self, chunks: Sequence[KnowledgeChunk]) -> list[KnowledgeChunk]:
+        """Assemble hit child chunks into complete parent section blocks.
+
+        Keeps the reranked order: each distinct parent appears once, at the
+        position of its best-scoring child, with the parent's full text.
+        Falls back to the child itself when the parent row is missing.
+        """
+        best_child: dict[str, KnowledgeChunk] = {}
+        order: list[str] = []
+        for c in chunks:
+            pid = c.parent_id or c.chunk_id
+            if pid not in best_child:
+                best_child[pid] = c
+                order.append(pid)
+        parents = self.store.query_parents(order)
+        assembled: list[KnowledgeChunk] = []
+        for pid in order:
+            parent = parents.get(pid)
+            child = best_child[pid]
+            assembled.append(parent.model_copy(update={"score": child.score}) if parent else child)
+        return assembled
+
+    def format_context(
+        self,
+        chunks: Sequence[KnowledgeChunk],
+        meta_map: dict[str, dict[str, Any]] | None = None,
+    ) -> str:
+        """Render chunks as grounded context for the LLM prompt.
+
+        Each block cites title / section / page and (when MySQL metadata is
+        available) the document tags.
+        """
         blocks = []
         for i, c in enumerate(chunks, 1):
-            blocks.append(f"[资料{i}] 《{c.title}》(来源:{c.source})\n{c.content}")
+            cite = f"《{c.title}》"
+            if c.section:
+                cite += f" 章节:{c.section}"
+            if c.page_no > 0:
+                cite += f" 第{c.page_no}页"
+            meta = (meta_map or {}).get(c.doc_id) or {}
+            if meta.get("tags"):
+                cite += f" (标签: {', '.join(meta['tags'])})"
+            blocks.append(f"[资料{i}] {cite}\n{c.content}")
         return "\n\n".join(blocks)

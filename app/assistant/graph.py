@@ -13,6 +13,7 @@ Every node writes an audit record under the same trace_id.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal, TypedDict
 
 from langchain_core.messages import AIMessage
@@ -37,6 +38,8 @@ from app.security.auth import (
 )
 from app.security.masking import mask_text
 
+logger = logging.getLogger(__name__)
+
 
 class AssistantState(TypedDict):
     """State carried through the orchestration graph."""
@@ -51,6 +54,7 @@ class AssistantState(TypedDict):
     answer: str
     route: Literal["assistant_kb", "mcp_tool", "a2a_agent", "direct"]
     target: str | None
+    docs_meta: list[dict[str, Any]]
 
 
 class AssistantOrchestrator:
@@ -82,8 +86,19 @@ class AssistantOrchestrator:
     # ---------------- graph nodes ----------------
     async def kb_answer(self, state: AssistantState) -> dict[str, Any]:
         retriever = await self._get_retriever()
-        chunks = await retriever.retrieve(state["message"])
-        context = retriever.format_context(chunks) if chunks else "(知识库暂无相关资料)"
+        children = await retriever.retrieve(state["message"])
+        # Assemble hit child chunks into complete parent section blocks so
+        # the LLM answers from full sections (with page/section citations).
+        chunks = retriever.assemble_parents(children) if children else []
+        meta_map: dict[str, dict[str, Any]] = {}
+        if chunks:
+            try:
+                from app.docs.service import get_meta_map
+
+                meta_map = await get_meta_map(list({c.doc_id for c in chunks}))
+            except Exception as exc:  # MySQL down must not break chat
+                logger.warning("doc metadata lookup failed, degrade to plain context: %s", exc)
+        context = retriever.format_context(chunks, meta_map) if chunks else "(知识库暂无相关资料)"
         prompt = KB_ANSWER_PROMPT.format(
             context=context, history=state.get("history", "(无)"), message=state["message"]
         )
@@ -92,7 +107,17 @@ class AssistantOrchestrator:
             state["trace_id"], "assistant", "kb_answered",
             {"chunks": [c.chunk_id for c in chunks]}, state["session_id"],
         )
-        return {"answer": str(resp.content), "route": "assistant_kb"}
+        docs_meta = [
+            {
+                "doc_key": c.doc_id,
+                "title": c.title,
+                "section": c.section,
+                "page_no": c.page_no,
+                "tags": (meta_map.get(c.doc_id) or {}).get("tags", []),
+            }
+            for c in chunks
+        ]
+        return {"answer": str(resp.content), "route": "assistant_kb", "docs_meta": docs_meta}
 
     async def tool_execute(self, state: AssistantState) -> dict[str, Any]:
         """Run a small ReAct loop over the target domain's MCP tools."""
@@ -216,6 +241,11 @@ class AssistantOrchestrator:
             self._retriever.rebuild_bm25()
         return self._retriever
 
+    async def refresh_knowledge(self) -> None:
+        """Rebuild the BM25 channel after a document (re)ingest."""
+        if self._retriever is not None:
+            self._retriever.rebuild_bm25()
+
     async def handle(self, req: ChatRequest) -> ChatResponse:
         """Handle one user turn end-to-end."""
         trace_id = new_trace_id()
@@ -236,6 +266,7 @@ class AssistantOrchestrator:
                 "answer": "",
                 "route": "direct",
                 "target": None,
+                "docs_meta": [],
             }
         )
         intent = final.get("intent") or IntentResult(intent=IntentType.CHITCHAT)
@@ -246,7 +277,11 @@ class AssistantOrchestrator:
             route=final.get("route", "direct"),
             target=final.get("target"),
             trace_id=trace_id,
-            metadata={"confidence": intent.confidence, "reason": intent.reason},
+            metadata={
+                "confidence": intent.confidence,
+                "reason": intent.reason,
+                "docs": final.get("docs_meta", []),
+            },
         )
 
 

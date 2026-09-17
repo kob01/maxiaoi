@@ -1,8 +1,17 @@
 """Knowledge ingestion pipeline.
 
-Stages: parse (txt/md/pdf/docx + video transcripts) -> chunk -> embed -> upsert
-into Milvus, then rebuild the BM25 channel. Re-ingesting the same file is
-idempotent: existing chunks of the doc are deleted first (dynamic update).
+Stages: parse (txt/md/pdf/docx/pptx/xlsx + video transcripts + images) into
+section-level blocks -> parent-child chunking -> embed -> upsert into Milvus,
+then rebuild the BM25 channel.
+
+Document identity: ``doc_id = sha1(file_name + ext)`` — path-independent, so
+re-uploading the same name+type overwrites the previous copy (single-version
+semantics: ``delete_by_doc`` + upsert).
+
+Parent-child chunking: each parsed block becomes a parent chunk; blocks
+larger than ``parent_chunk_max`` are window-split into child chunks.
+Retrieval hits children only; parents carry the complete section text for
+context assembly.
 """
 
 from __future__ import annotations
@@ -12,70 +21,23 @@ import re
 from pathlib import Path
 from typing import Sequence
 
+from app.config import get_settings
+from app.docs.parsers import ParsedBlock, parse_blocks
 from app.rag.embeddings import OllamaEmbedder
 from app.rag.vectorstore import MilvusStore
 from app.schemas import KnowledgeChunk
-
-SUPPORTED_TEXT_EXT = {".txt", ".md", ".pdf", ".docx"}
-SUPPORTED_VIDEO_EXT = {".srt", ".vtt", ".transcript.txt"}
 
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 64
 
 
-def _doc_id(path: Path) -> str:
-    return hashlib.sha1(str(path).encode()).hexdigest()[:16]
-
-
-def _chunk_id(doc_id: str, idx: int) -> str:
-    return f"{doc_id}-{idx:05d}"
-
-
-def parse_text_file(path: Path) -> str:
-    """Extract raw text from txt/md/pdf/docx."""
-    ext = path.suffix.lower()
-    if ext in {".txt", ".md"}:
-        return path.read_text(encoding="utf-8")
-    if ext == ".pdf":
-        from pypdf import PdfReader
-
-        reader = PdfReader(str(path))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    if ext == ".docx":
-        import docx
-
-        doc = docx.Document(str(path))
-        return "\n".join(p.text for p in doc.paragraphs)
-    raise ValueError(f"Unsupported text file: {path}")
-
-
-def parse_video_transcript(path: Path) -> list[dict[str, str]]:
-    """Parse a video subtitle/transcript file into structured agenda items.
-
-    Supports .srt/.vtt style blocks. Returns a list of segments with
-    {start, end, text} so that chapter-level chunking stays traceable
-    back to the video timeline.
-    """
-    raw = path.read_text(encoding="utf-8")
-    raw = raw.replace("WEBVTT", "")
-    segments: list[dict[str, str]] = []
-    block_re = re.compile(
-        r"(?P<start>\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(?P<end>\d{2}:\d{2}:\d{2}[,.]\d{3})\s*\n(?P<text>.*?)(?=\n\s*\n|\Z)",
-        re.DOTALL,
-    )
-    for m in block_re.finditer(raw):
-        text = re.sub(r"<[^>]+>", "", m.group("text")).strip()
-        if text:
-            segments.append({"start": m.group("start"), "end": m.group("end"), "text": text})
-    if not segments:  # plain transcript fallback
-        text = raw.strip()
-        if text:
-            segments.append({"start": "00:00:00,000", "end": "", "text": text})
-    return segments
+def compute_doc_id(name: str, ext: str) -> str:
+    """Stable document identity from file name + extension (path-independent)."""
+    return hashlib.sha1(f"{name}|{ext.lower()}".encode()).hexdigest()[:16]
 
 
 def split_chunks(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
-    """Paragraph-aware sliding-window chunking."""
+    """Paragraph-aware sliding-window chunking (fallback splitter)."""
     paragraphs = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
     chunks: list[str] = []
     buf = ""
@@ -94,49 +56,80 @@ def split_chunks(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP
     return chunks
 
 
-def _is_video_file(path: Path) -> bool:
-    name = path.name.lower()
-    return any(name.endswith(ext) for ext in SUPPORTED_VIDEO_EXT)
+def build_parent_child_chunks(
+    doc_id: str,
+    title: str,
+    source: str,
+    modality: str,
+    blocks: Sequence[ParsedBlock],
+    parent_max: int | None = None,
+) -> list[KnowledgeChunk]:
+    """Turn parsed section blocks into parent + child KnowledgeChunks.
+
+    Every block becomes one parent chunk (complete section text). Oversized
+    blocks are additionally window-split into child chunks that carry the
+    retrieval payload; small blocks get exactly one child identical to the
+    parent so retrieval and assembly stay uniform.
+    """
+    parent_max = parent_max or get_settings().parent_chunk_max
+    chunks: list[KnowledgeChunk] = []
+    for seq, block in enumerate(blocks):
+        text = block.text.strip()
+        if not text:
+            continue
+        parent_id = f"{doc_id}-p{seq:04d}"
+        parent = KnowledgeChunk(
+            chunk_id=parent_id,
+            doc_id=doc_id,
+            title=title,
+            content=text[:8192],
+            source=source,
+            modality=modality,  # type: ignore[arg-type]
+            is_parent=True,
+            page_no=block.page_no,
+            section=block.section,
+        )
+        chunks.append(parent)
+        pieces = [text] if len(text) <= parent_max else split_chunks(text)
+        for idx, piece in enumerate(pieces):
+            chunks.append(
+                KnowledgeChunk(
+                    chunk_id=f"{parent_id}-c{idx:02d}",
+                    doc_id=doc_id,
+                    title=title,
+                    content=piece,
+                    source=source,
+                    modality=modality,  # type: ignore[arg-type]
+                    parent_id=parent_id,
+                    page_no=block.page_no,
+                    section=block.section,
+                )
+            )
+    return chunks
 
 
 async def ingest_file(path: Path, store: MilvusStore, embedder: OllamaEmbedder) -> int:
-    """Ingest a single file; returns number of chunks written."""
-    doc_id = _doc_id(path)
-    store.delete_by_doc(doc_id)  # idempotent dynamic update
+    """Ingest a single file; returns number of chunks written (parents+children)."""
+    doc_id = compute_doc_id(path.stem, path.suffix)
+    modality, blocks = await parse_blocks(path)
+    return await ingest_blocks(doc_id, path.name, path.stem, str(path), modality, blocks, store, embedder)
 
-    chunks: list[KnowledgeChunk] = []
-    if _is_video_file(path):
-        segments = parse_video_transcript(path)
-        merged = "\n".join(f"[{s['start']} -> {s['end']}] {s['text']}" for s in segments)
-        for idx, piece in enumerate(split_chunks(merged)):
-            chunks.append(
-                KnowledgeChunk(
-                    chunk_id=_chunk_id(doc_id, idx),
-                    doc_id=doc_id,
-                    title=path.stem,
-                    content=piece,
-                    source=str(path),
-                    modality="video_transcript",
-                )
-            )
-    elif path.suffix.lower() in SUPPORTED_TEXT_EXT:
-        text = parse_text_file(path)
-        for idx, piece in enumerate(split_chunks(text)):
-            chunks.append(
-                KnowledgeChunk(
-                    chunk_id=_chunk_id(doc_id, idx),
-                    doc_id=doc_id,
-                    title=path.stem,
-                    content=piece,
-                    source=str(path),
-                    modality="text",
-                )
-            )
-    else:
-        return 0
 
+async def ingest_blocks(
+    doc_id: str,
+    filename: str,
+    title: str,
+    source: str,
+    modality: str,
+    blocks: Sequence[ParsedBlock],
+    store: MilvusStore,
+    embedder: OllamaEmbedder,
+) -> int:
+    """Overwrite-ingest pre-parsed blocks of one document into Milvus."""
+    chunks = build_parent_child_chunks(doc_id, title, source, modality, blocks)
     if not chunks:
         return 0
+    store.delete_by_doc(doc_id)  # single-version overwrite semantics
     vectors = await embedder.embed([c.content for c in chunks])
     return store.upsert(chunks, vectors)
 
@@ -147,28 +140,15 @@ async def ingest_directory(dir_path: Path, store: MilvusStore, embedder: OllamaE
     for path in sorted(dir_path.rglob("*")):
         if not path.is_file():
             continue
-        n = await ingest_file(path, store, embedder)
+        try:
+            n = await ingest_file(path, store, embedder)
+        except ValueError:
+            continue  # unsupported extension
         if n:
             report[str(path)] = n
     return report
 
 
 def collect_corpus(store: MilvusStore) -> Sequence[KnowledgeChunk]:
-    """Fetch the full corpus (for BM25 rebuild)."""
-    rows = store.client.query(
-        collection_name=store.collection_name,
-        filter="chunk_id != ''",
-        output_fields=["chunk_id", "doc_id", "title", "content", "source", "modality"],
-        limit=16384,
-    )
-    return [
-        KnowledgeChunk(
-            chunk_id=r["chunk_id"],
-            doc_id=r["doc_id"],
-            title=r["title"],
-            content=r["content"],
-            source=r["source"],
-            modality=r.get("modality", "text"),
-        )
-        for r in rows
-    ]
+    """Fetch the child-chunk corpus (for BM25 rebuild)."""
+    return store.iter_child_chunks()

@@ -59,12 +59,22 @@ class ChatResponse(BaseModel):
 
 
 class KnowledgeChunk(BaseModel):
-    """A single retrievable knowledge chunk."""
+    """A single retrievable knowledge chunk.
+
+    Parent-child chunking: a document is parsed into section-level parent
+    blocks; oversized parents are window-split into child chunks. Retrieval
+    hits children (`is_parent=False`); parents are assembled afterwards to
+    provide complete section context.
+    """
 
     chunk_id: str
     doc_id: str
     title: str
     content: str
     source: str
-    modality: Literal["text", "video_transcript"] = "text"
+    modality: Literal["text", "video_transcript", "image"] = "text"
+    parent_id: str = ""          # child -> parent chunk_id; parents keep ""
+    is_parent: bool = False      # parent rows are excluded from retrieval
+    page_no: int = -1            # pdf page / pptx slide / xlsx sheet; -1 unknown
+    section: str = ""            # section heading path, slide title, sheet name
     score: float = 0.0

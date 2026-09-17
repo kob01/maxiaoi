@@ -28,3 +28,9 @@ pypdf>=5.0.0
 python-docx>=1.1.2
 openpyxl>=3.1.5
 python-multipart>=0.0.9
+
+# Document management (upload / metadata / multi-modal parsing)
+sqlalchemy[asyncio]>=2.0.30
+aiomysql>=0.2.0
+python-pptx>=1.0.0
+pillow>=10.0.0

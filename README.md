@@ -73,33 +73,52 @@ mxi/
 
 ## 快速开始
 
-前置:本地 Ollama 已启动并拉取模型:
+前置:本地 Ollama 已启动并拉取模型(含多模态图片解析模型):
 
 ```bash
-ollama pull qwen3.5 && ollama pull qwen3.5
-ollama pull bge-m3 && ollama pull dengcao/bge-reranker-v2-m3
+ollama pull qwen3.5
+ollama pull bge-m3
+ollama pull dengcao/bge-reranker-v2-m3
+ollama pull qwen3-vl        # 图片/截图解析需要
 ```
 
-### Docker Compose 一键启动
+### Docker Compose 启动(推荐)
 
 ```bash
-cp .env.example docker/.env        # 如 Ollama 不在宿主机,改 OLLAMA_BASE_URL
+cp .env.example docker/.env
+# 编辑 docker/.env: 填入 MYSQL_PASSWORD(该文件已被 .gitignore 排除, 不会提交)
 docker compose -f docker/docker-compose.yml up -d --build
-# 构建知识库(首次)
+# 构建知识库(可选; 现在也可通过 Web 上传)
 docker compose -f docker/docker-compose.yml exec assistant python -m scripts.ingest_knowledge --dir /data/knowledge
-# Web 聊天: http://localhost:8000   demo: python -m scripts.demo_reimburse
+# Web 聊天: http://localhost:8000   文档管理: http://localhost:8000/upload
 ```
 
 ### 本地开发
 
 ```bash
-pip install -r requirements.txt
-python -m app.mcp_servers.hr_server &        # :8001
-python -m app.mcp_servers.finance_server &   # :8002
-python -m app.agents.hr_agent.server &       # :9001
-python -m app.agents.finance_agent.server &  # :9002
-python -m scripts.ingest_knowledge           # 建库
-uvicorn app.main:app --port 8000             # Assistant 网关
+# 建议用 uv 管理依赖
+pip install uv
+uv sync
+
+# 配置数据库密码: 在项目根目录 .env(或 docker/.env)添加 MYSQL_PASSWORD=...
+# 也可直接设置环境变量: $env:MYSQL_PASSWORD="..." (PowerShell)
+
+# 1. 建表自检
+uv run python -m scripts.init_db
+
+# 2. 启动业务 MCP / A2A 服务(按需)
+uv run python -m app.mcp_servers.hr_server &        # :8001
+uv run python -m app.mcp_servers.finance_server &   # :8002
+uv run python -m app.agents.hr_agent.server &       # :9001
+uv run python -m app.agents.finance_agent.server &  # :9002
+
+# 3. 启动 Assistant 网关
+uv run uvicorn app.main:app --port 8000
+
+# Web 聊天: http://localhost:8000
+# 文档上传/管理: http://localhost:8000/upload
+# 命令行方式构建知识库(首次或批量):
+uv run python -m scripts.ingest_knowledge --dir ./data/knowledge
 ```
 
 ## 端到端链路("我要报销")
