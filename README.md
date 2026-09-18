@@ -9,7 +9,7 @@ MCP 工具调用、A2A 专业智能体委派。
 ```
                 ┌──────────────────────── Web / API ─────────────────────────┐
                 │                      Assistant (统一入口)                   │
-                │  FastAPI + LangGraph 编排: 意图识别(qwen3.5) → 分层路由   │
+                │  FastAPI + LangGraph 编排: 意图识别(deepseek-flash) → 分层路由 │
                 └───┬───────────────┬───────────────────┬────────────────────┘
                     │               │                   │
             a. 简单查询      b. 复杂操作(MCP)      c. 专业任务(A2A)
@@ -20,7 +20,8 @@ MCP 工具调用、A2A 专业智能体委派。
           │ Milvus Lite  │  │ 财务报销:8002 │   │ Finance  :9002 │
           │ BM25+Rerank  │  │ (FastMCP)     │   │ (LangGraph+MCP)│
           └──────────────┘  └───────────────┘   └────────────────┘
-                    └──── 底座: Ollama (qwen3.5 / bge-m3 / bge-reranker-v2-m3) ────┘
+                    ├──── LLM: DeepSeek API (deepseek-flash) ────┤
+                    └──── 底座: Ollama (bge-m3 / bge-reranker-v2-m3 / qwen3-vl) ────┘
 ```
 
 A2A 遵循 Agent2Agent 协议:Agent Card 发布于 `/.well-known/agent-card.json`,
@@ -37,7 +38,7 @@ mxi/
 │   ├── main.py                   # FastAPI 网关入口(挂载 Web UI)
 │   ├── assistant/                # ★ Assistant 调度核心
 │   │   ├── graph.py              #   LangGraph 编排:意图→分层路由→记忆
-│   │   ├── intent.py             #   意图识别(qwen3.5 + 关键词兜底)
+│   │   ├── intent.py             #   意图识别(deepseek-flash + 关键词兜底)
 │   │   ├── memory.py             #   短期窗口 + LLM 摘要长期记忆
 │   │   ├── mcp_client.py         #   MCP Client(langchain-mcp-adapters)
 │   │   ├── a2a_client.py         #   A2A Client(Agent Card 发现/message.send)
@@ -73,10 +74,10 @@ mxi/
 
 ## 快速开始
 
-前置:本地 Ollama 已启动并拉取模型(含多模态图片解析模型):
+前置:LLM/意图识别走 DeepSeek 在线 API(需 API Key);本地 Ollama 仅用于
+embedding/rerank/图片解析模型:
 
 ```bash
-ollama pull qwen3.5
 ollama pull bge-m3
 ollama pull dengcao/bge-reranker-v2-m3
 ollama pull qwen3-vl        # 图片/截图解析需要
@@ -86,7 +87,6 @@ ollama pull qwen3-vl        # 图片/截图解析需要
 
 ```bash
 cp .env docker/.env
-# 编辑 docker/.env: 填入 MYSQL_PASSWORD(该文件已被 .gitignore 排除, 不会提交)
 docker compose -f docker/docker-compose.yml up -d --build
 # 构建知识库(可选; 现在也可通过 Web 上传)
 docker compose -f docker/docker-compose.yml exec assistant python -m scripts.ingest_knowledge --dir /data/knowledge
@@ -100,8 +100,8 @@ docker compose -f docker/docker-compose.yml exec assistant python -m scripts.ing
 pip install uv
 uv sync
 
-# 配置数据库密码: 在项目根目录 .env(或 docker/.env)添加 MYSQL_PASSWORD=...
-# 也可直接设置环境变量: $env:MYSQL_PASSWORD="..." (PowerShell)
+# 配置敏感信息: 在项目根目录 .env 填写 MYSQL_PASSWORD=... 与 DEEPSEEK_API_KEY=...
+# (该文件已被 .gitignore 排除); 也可直接设置环境变量 (PowerShell: $env:DEEPSEEK_API_KEY="...")
 
 # 1. 建表自检
 uv run python -m scripts.init_db
@@ -124,9 +124,9 @@ uv run python -m scripts.ingest_knowledge --dir ./data/knowledge
 ## 端到端链路("我要报销")
 
 1. `POST /api/chat` → Assistant 载入会话记忆(短期窗口 + 长期摘要)
-2. `qwen3.5` 意图识别 → `agent_delegate / finance`
+2. `deepseek-flash` 意图识别 → `agent_delegate / finance`
 3. 权限校验(角色白名单)→ A2A Client 拉取 Finance_Agent 的 Agent Card 并 `message/send`
-4. Finance_Agent(LangGraph ReAct + qwen3.5)追问/补齐要素后,经 MCP 调用
+4. Finance_Agent(LangGraph ReAct + deepseek-flash)追问/补齐要素后,经 MCP 调用
    `create_reimbursement` 创建报销单
 5. 单号/审批节点沿 A2A 返回 → Assistant 回复用户;全程写 `logs/audit.jsonl`
    (同一 trace_id),敏感字段(金额/证件号/手机号)脱敏。

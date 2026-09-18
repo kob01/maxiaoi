@@ -3,7 +3,14 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 敏感项对应的 Docker secret 文件(BuildKit/compose secrets 挂载路径)
+_SECRET_FILES = {
+    "mysql_password": "/run/secrets/mysql_password",
+    "deepseek_api_key": "/run/secrets/deepseek_api_key",
+}
 
 
 class Settings(BaseSettings):
@@ -14,15 +21,24 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=(".env", "docker/.env"), env_file_encoding="utf-8", extra="ignore"
+        env_file=(".env", "docker/.env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        # 字段取默认值(环境变量缺失)时也运行校验器, 以便回退读取 /run/secrets/*
+        validate_default=True,
     )
 
-    # Ollama
+    # Ollama (仅 embedding / rerank / vision 仍走本地 Ollama)
     ollama_base_url: str = "http://localhost:11434"
-    llm_model: str = "qwen3.5"
-    intent_model: str = "qwen3.5"
     embedding_model: str = "bge-m3"
     rerank_model: str = "dengcao/bge-reranker-v2-m3"
+
+    # DeepSeek 在线 API (OpenAI 兼容格式, 用于 LLM / 意图识别)
+    deepseek_base_url: str = "https://api.deepseek.com"
+    # 密钥优先取环境变量, 其次由校验器读取 /run/secrets/deepseek_api_key
+    deepseek_api_key: str = ""
+    llm_model: str = "deepseek-flash"
+    intent_model: str = "deepseek-flash"
 
     # RAG (env var named MILVUS_LITE_URI to avoid clashing with pymilvus's own MILVUS_URI)
     milvus_lite_uri: str = "./data/milvus_lite.db"
@@ -35,8 +51,6 @@ class Settings(BaseSettings):
     rerank_enabled: bool = True
 
     # Document upload & metadata (MySQL)
-    # 密码经环境变量 MYSQL_PASSWORD 注入(优先真实环境变量, 其次 .env 文件);
-    # pydantic-settings 统一解析, 不落代码库(.env 已被 .gitignore 排除)。
     mysql_host: str = "47.116.208.170"
     mysql_port: int = 3306
     mysql_user: str = "sql47_116_208_1"
@@ -68,6 +82,17 @@ class Settings(BaseSettings):
 
     # Security
     audit_log_path: str = "./logs/audit.jsonl"
+
+    @field_validator("mysql_password", "deepseek_api_key", mode="after")
+    @classmethod
+    def _read_from_secret_file(cls, value: str, info) -> str:
+        """环境变量/.env 未提供时, 回退读取 compose secret 文件。"""
+        if value:
+            return value
+        secret_path = Path(_SECRET_FILES[info.field_name])
+        if secret_path.is_file():
+            return secret_path.read_text(encoding="utf-8").strip()
+        return value
 
     @property
     def base_dir(self) -> Path:

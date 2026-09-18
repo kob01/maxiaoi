@@ -8,10 +8,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from langchain_ollama import ChatOllama
-
 from app.assistant.prompts import SUMMARY_PROMPT
 from app.config import get_settings
+from app.llm import get_chat_model
 
 
 @dataclass
@@ -30,9 +29,7 @@ class MemoryStore:
         self._max_turns = settings.memory_max_turns
         self._summary_threshold = settings.memory_summary_threshold
         self._sessions: dict[str, SessionMemory] = {}
-        self._summarizer = ChatOllama(
-            model=settings.llm_model, base_url=settings.ollama_base_url, temperature=0
-        )
+        self._summarizer = get_chat_model(settings.llm_model, temperature=0)
 
     def get(self, session_id: str) -> SessionMemory:
         """Get or create the memory for a session."""

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from langchain_core.messages import AIMessage
-from langchain_ollama import ChatOllama
 from langgraph.prebuilt import create_react_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -14,6 +13,7 @@ from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 
 from app.config import get_settings
+from app.llm import get_chat_model
 from app.security.audit import get_audit_logger
 
 SYSTEM_PROMPT = """你是 HR_Agent,企业 HR 服务专业智能体。
@@ -35,7 +35,7 @@ class HRAgent:
     def __init__(self) -> None:
         settings = get_settings()
         self._settings = settings
-        self._llm = ChatOllama(model=settings.llm_model, base_url=settings.ollama_base_url, temperature=0)
+        self._llm = get_chat_model(settings.llm_model, temperature=0)
         self._agent: Any | None = None
 
     async def _ensure_agent(self) -> Any:

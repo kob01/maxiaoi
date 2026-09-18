@@ -6,6 +6,14 @@ x-build: &build
     BASE_IMAGE: ${BASE_IMAGE:-docker.m.daocloud.io/library/python:3.11-slim}
     PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
 
+# 运行时敏感信息以 secret 文件挂载到容器 /run/secrets/<name>,
+# 不进镜像、不进环境变量、不提交 git (docker/secrets/ 已被 .gitignore 排除)。
+secrets:
+  mysql_password:
+    file: ./secrets/mysql_password.txt
+  deepseek_api_key:
+    file: ./secrets/deepseek_api_key.txt
+
 services:
   hr-mcp:
     build: *build
@@ -25,9 +33,12 @@ services:
     ports: ["9001:9001"]
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
       HR_MCP_URL: http://hr-mcp:8001/mcp
       HR_AGENT_URL: http://hr-agent:9001
       AUDIT_LOG_PATH: /data/logs/audit.jsonl
+    secrets: [deepseek_api_key]
     volumes:
       - ../logs:/data/logs
     depends_on: [hr-mcp]
@@ -41,9 +52,12 @@ services:
     ports: ["9002:9002"]
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
       FINANCE_MCP_URL: http://finance-mcp:8002/mcp
       FINANCE_AGENT_URL: http://finance-agent:9002
       AUDIT_LOG_PATH: /data/logs/audit.jsonl
+    secrets: [deepseek_api_key]
     volumes:
       - ../logs:/data/logs
     depends_on: [finance-mcp]
@@ -55,11 +69,13 @@ services:
     build: *build
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports: ["8000:8000"]
-    # MYSQL_PASSWORD 从 docker/.env(或 shell 环境)注入容器, 不落镜像与代码库
+    # MYSQL_PASSWORD / DEEPSEEK_API_KEY 经 secrets 挂载到 /run/secrets/*,
+    # 由 app/config.py 读取; 不进环境变量、不落镜像与代码库。
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      LLM_MODEL: ${LLM_MODEL:-qwen3.5}
-      INTENT_MODEL: ${INTENT_MODEL:-qwen3.5}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
+      INTENT_MODEL: ${INTENT_MODEL:-deepseek-flash}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-m3}
       RERANK_MODEL: ${RERANK_MODEL:-dengcao/bge-reranker-v2-m3}
       MILVUS_LITE_URI: /data/milvus_lite.db
@@ -71,8 +87,10 @@ services:
       MYSQL_HOST: ${MYSQL_HOST:-47.116.208.170}
       MYSQL_PORT: ${MYSQL_PORT:-3306}
       MYSQL_USER: ${MYSQL_USER:-sql47_116_208_1}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-sql47_116_208_1}
+    secrets:
+      - mysql_password
+      - deepseek_api_key
     volumes:
       - ../data:/data
       - ../logs:/data/logs

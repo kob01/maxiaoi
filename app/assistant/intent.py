@@ -1,4 +1,4 @@
-"""Intent recognition powered by the small local model (qwen3.5).
+"""Intent recognition powered by the configured intent model.
 
 Falls back to keyword heuristics when the model output cannot be parsed,
 so routing never crashes on bad LLM output.
@@ -9,10 +9,9 @@ from __future__ import annotations
 import json
 import re
 
-from langchain_ollama import ChatOllama
-
 from app.assistant.prompts import INTENT_PROMPT
 from app.config import get_settings
+from app.llm import get_chat_model
 from app.schemas import IntentResult, IntentType
 
 _AGENT_KEYWORDS = {
@@ -27,12 +26,8 @@ class IntentRecognizer:
 
     def __init__(self) -> None:
         settings = get_settings()
-        self._llm = ChatOllama(
-            model=settings.intent_model,
-            base_url=settings.ollama_base_url,
-            temperature=0,
-            format="json",
-            # reasoning=False,  # qwen3.5:4b 关闭思考，确保 JSON content 不为空
+        self._llm = get_chat_model(
+            settings.intent_model, temperature=0, json_mode=True
         )
 
     def _fallback(self, message: str) -> IntentResult:

@@ -16,6 +16,7 @@ data/uploads
 .env
 docker/.env
 .env.local
+docker/secrets/
 
 # Milvus Lite local vector database
 data/milvus_lite.db/

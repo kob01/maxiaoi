@@ -88,11 +88,11 @@ async def _existing_tag_names() -> list[str]:
 
 async def suggest_tags(text: str) -> list[str]:
     """Ask the LLM for 3~5 category tags; falls back to [] on any failure."""
-    from langchain_ollama import ChatOllama
+    from app.llm import get_chat_model
 
     settings = get_settings()
     existing = await _existing_tag_names()
-    llm = ChatOllama(model=settings.llm_model, base_url=settings.ollama_base_url, temperature=0.2)
+    llm = get_chat_model(settings.llm_model, temperature=0.2)
     prompt = TAG_PROMPT.format(
         existing="、".join(existing) if existing else "(暂无)",
         excerpt=text[:3000],

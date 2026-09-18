@@ -17,7 +17,6 @@ import logging
 from typing import Any, Literal, TypedDict
 
 from langchain_core.messages import AIMessage
-from langchain_ollama import ChatOllama
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import create_react_agent
 
@@ -27,6 +26,7 @@ from app.assistant.memory import get_memory_store
 from app.assistant.mcp_client import get_mcp_pool
 from app.assistant.prompts import DIRECT_PROMPT, KB_ANSWER_PROMPT
 from app.config import get_settings
+from app.llm import get_chat_model
 from app.rag.retriever import HybridRetriever
 from app.schemas import ChatRequest, ChatResponse, IntentResult, IntentType, Role
 from app.security.audit import get_audit_logger, new_trace_id
@@ -63,7 +63,7 @@ class AssistantOrchestrator:
     def __init__(self) -> None:
         settings = get_settings()
         self._settings = settings
-        self._llm = ChatOllama(model=settings.llm_model, base_url=settings.ollama_base_url, temperature=0.3)
+        self._llm = get_chat_model(settings.llm_model, temperature=0.3)
         self._intent = IntentRecognizer()
         self._memory = get_memory_store()
         self._audit = get_audit_logger()

@@ -205,7 +205,6 @@ def _parse_subtitle(path: Path) -> list[ParsedBlock]:
 
 # ---------------- image parser (vision model) ----------------
 
-# Downscale cap: qwen3-vl wastes tokens (and minutes) on oversized photos;
 # 1568px preserves OCR readability while keeping the request fast.
 _IMAGE_MAX_EDGE = 1568
 

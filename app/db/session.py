@@ -21,7 +21,9 @@ def _ensure_password() -> str:
     if not password:
         raise RuntimeError(
             "缺少 MySQL 密码: 请设置环境变量 MYSQL_PASSWORD, "
-            "或在项目根目录 .env / docker/.env 中添加 MYSQL_PASSWORD=..."
+            "或在项目根目录 .env / docker/.env 中添加 MYSQL_PASSWORD=..., "
+            "Docker 部署则创建 docker/secrets/mysql_password.txt"
+            "(容器内挂载为 /run/secrets/mysql_password)"
         )
     return password
 
