@@ -95,7 +95,7 @@ expected form 'http[s]://[user:password@]example.com[:12345]'
 注意报错发生在 import 阶段（`pymilvus.orm.connections` 模块级初始化），还没走到我们的代码。
 
 **解决**：
-- 我们的环境变量改名 `MILVUS_LITE_URI`（[config.py](app/config.py)、[docker-compose.yml](docker/docker-compose.yml)、[.env.example](.env.example)）
+- 我们的环境变量改名 `MILVUS_LITE_URI`（[config.py](app/config.py)、[docker-compose.yml](docker/docker-compose.yml)、[.env](.env)）
 - 锁定 `pymilvus[milvus_lite]>=2.4.8,<3`
 
 **教训**：自定义环境变量避开知名三方库的保留变量名（`MILVUS_URI`/`HF_HOME`/`HTTP_PROXY` 等）。

@@ -17,10 +17,5 @@ data/uploads
 docker/.env
 .env.local
 
-# 环境变量文件(含 MYSQL_PASSWORD 等敏感信息)
-.env
-docker/.env
-.env.local
-
 # Milvus Lite local vector database
 data/milvus_lite.db/

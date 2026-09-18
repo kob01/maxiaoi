@@ -32,6 +32,7 @@ class IntentRecognizer:
             base_url=settings.ollama_base_url,
             temperature=0,
             format="json",
+            # reasoning=False,  # qwen3.5:4b 关闭思考，确保 JSON content 不为空
         )
 
     def _fallback(self, message: str) -> IntentResult:

@@ -110,12 +110,12 @@ document_tags(doc_key VARCHAR(32), tag_id BIGINT, PK(doc_key, tag_id))
 新增：`python-pptx`、`sqlalchemy[asyncio]>=2.0`、`aiomysql`、`pillow`（图片校验）。
 `openpyxl`、`python-multipart` 已存在。执行 `uv lock` 更新锁文件。
 
-### 5.2 配置 — [config.py](file:///d:/ai/mxi/app/config.py) + [.env.example](file:///d:/ai/mxi/.env.example)
+### 5.2 配置 — [config.py](file:///d:/ai/mxi/app/config.py) + [.env](file:///d:/ai/mxi/.env)
 新增 Settings 字段：
 - `mysql_host: str = "47.116.208.170"`、`mysql_port: int = 3306`、`mysql_user: str = "sql47_116_208_1"`、`mysql_database: str = "sql47_116_208_1"`、`mysql_connect_timeout: int = 10`
 - **无 `mysql_password` 字段**（仅终端输入，`app.db.session` 模块级驻留）
 - `vision_model: str = "qwen3-vl"`、`upload_dir: str = "./data/uploads"`、`upload_max_mb: int = 50`、`parent_chunk_max: int = 1200`
-.env.example 追加非密配置项（不含密码）。
+.env 追加非密配置项（不含密码）。
 
 ### 5.3 数据库层（新增 `app/db/`）
 - **`app/db/session.py`**：`init_engine()` 时若密码为空则 `getpass.getpass("MySQL password: ")` 输入一次驻留内存；无 tty（Docker detached）抛明确错误。SQLAlchemy 2.0 `create_async_engine("mysql+aiomysql://...")` + `async_sessionmaker`，`pool_pre_ping=True`。

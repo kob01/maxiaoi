@@ -68,7 +68,7 @@ mxi/
 │   ├── Dockerfile
 │   └── docker-compose.yml        # 一键启动
 ├── requirements.txt
-└── .env.example
+└── .env
 ```
 
 ## 快速开始
@@ -85,7 +85,7 @@ ollama pull qwen3-vl        # 图片/截图解析需要
 ### Docker Compose 启动(推荐)
 
 ```bash
-cp .env.example docker/.env
+cp .env docker/.env
 # 编辑 docker/.env: 填入 MYSQL_PASSWORD(该文件已被 .gitignore 排除, 不会提交)
 docker compose -f docker/docker-compose.yml up -d --build
 # 构建知识库(可选; 现在也可通过 Web 上传)
