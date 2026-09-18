@@ -8,7 +8,7 @@
 a. 简单查询 → 直接由 Assistant 基于知识库回答 
 b. 复杂操作 → Assistant 通过 MCP 协议调用工具/业务系统 API 
 c. 专业任务 → Assistant 通过 A2A 协议委派给专业 Agent 执行
-2. 底座模型：qwen3.5
+2. 底座模型：ds
 3. RAG 知识底座： 
   ○ 知识来源：企业制度文档、FAQ、知识图谱 
   ○ Embedding 模型：bge-m3
@@ -23,7 +23,7 @@ c. 专业任务 → Assistant 通过 A2A 协议委派给专业 Agent 执行
   ○ 首批需实现的专业 Agent：HR_Agent、Finance_Agent
 6. 对话管理： 
   ○ 支持多轮对话、上下文记忆、意图识别 
-  ○ 意图识别模型：qwen3.5 
+  ○ 意图识别模型：ds
   ○ 记忆策略：如短期对话记忆 + 会话摘要长期记忆
 7. 安全与治理： 
   ○ Agent 行为全链路日志留痕 

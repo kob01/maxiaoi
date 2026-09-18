@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -164,6 +165,41 @@ async def ingest_confirmed(
         logger.warning("bm25 refresh after ingest failed: %s", exc)
 
     return {"doc_key": doc_key, "chunk_count": chunk_count, "tags": tags, "modality": modality}
+
+
+async def delete_document(doc_key: str) -> dict[str, Any]:
+    """Delete a document: Milvus chunks + MySQL metadata + upload files."""
+    factory = get_session_factory()
+    async with factory() as session:
+        doc = (
+            await session.execute(select(Document).where(Document.doc_key == doc_key))
+        ).scalar_one_or_none()
+        if doc is None:
+            raise UploadError("文档不存在或已删除")
+        name, file_path = doc.name, doc.file_path
+
+        # Milvus vectors first; MySQL row is the source of truth, so a vector
+        # failure aborts before metadata is lost (chunk leftovers can be
+        # purged by a re-ingest, but a lost metadata row orphans nothing).
+        MilvusStore().delete_by_doc(doc_key)
+        await session.execute(delete(DocumentTag).where(DocumentTag.doc_key == doc_key))
+        await session.execute(delete(Document).where(Document.doc_key == doc_key))
+        await session.commit()
+
+    # remove the uploaded file directory (best effort)
+    if file_path:
+        shutil.rmtree(Path(file_path).parent, ignore_errors=True)
+
+    # --- refresh the BM25 channel of the running assistant, if any ---
+    try:
+        from app.assistant.graph import get_orchestrator
+
+        await get_orchestrator().refresh_knowledge()
+    except Exception as exc:  # BM25 rebuilds on next startup anyway
+        logger.warning("bm25 refresh after delete failed: %s", exc)
+
+    logger.info("document deleted: doc_key=%s name=%s", doc_key, name)
+    return {"doc_key": doc_key, "name": name}
 
 
 async def _get_or_create_tag(session, name: str) -> int:

@@ -72,6 +72,23 @@ async def ingest_doc(req: IngestRequest) -> dict:
     return result
 
 
+@router.delete("/{doc_key}")
+async def delete_doc(doc_key: str, operator: str = "anonymous") -> dict:
+    """Remove a document: Milvus chunks + MySQL metadata + upload files."""
+    trace_id = new_trace_id()
+    try:
+        result = await service.delete_document(doc_key)
+    except service.UploadError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:  # e.g. Milvus unavailable
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    get_audit_logger().log(
+        trace_id, "docs", "document_deleted",
+        {"doc_key": doc_key, "operator": operator},
+    )
+    return result
+
+
 @router.get("")
 async def list_docs() -> list[dict]:
     """Document list for the management page."""

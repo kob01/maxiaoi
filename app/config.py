@@ -59,8 +59,8 @@ class Settings(BaseSettings):
     mysql_connect_timeout: int = 10
     upload_dir: str = "./data/uploads"
     upload_max_mb: int = 50
-    # Vision model used to caption uploaded images (needs `ollama pull qwen3-vl`)
-    vision_model: str = "qwen3-vl"
+    # Vision/OCR model used to caption uploaded images (needs `ollama pull glm-ocr`)
+    vision_model: str = "glm-ocr"
     vision_timeout: int = 300
     # Parent-child chunking: a section block larger than this is window-split
     # into child chunks; smaller blocks stay a single child under the parent.

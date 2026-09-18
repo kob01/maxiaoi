@@ -39,6 +39,8 @@
   th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #eef1f6; }
   th { color:#67718a; font-weight:500; font-size:12px; }
   .tag-pill { display:inline-block; background:#eef2ff; color:#1f3a93; border-radius:10px; padding:1px 8px; font-size:11px; margin:1px 2px; }
+  button.danger { background:#fff; color:#cf222e; border:1px solid #cf222e; padding:3px 10px; font-size:12px; }
+  button.danger:hover { background:#cf222e; color:#fff; }
   .empty { color:#9aa3b8; font-size:13px; padding:14px 0; text-align:center; }
 </style>
 </head>
@@ -65,7 +67,7 @@
   <div class="card">
     <h2>已入库文档 <button class="ghost" id="refresh" style="float:right">刷新</button></h2>
     <table>
-      <thead><tr><th>名称</th><th>类型</th><th>模态</th><th>块数</th><th>标签</th><th>上传人</th><th>更新时间</th></tr></thead>
+      <thead><tr><th>名称</th><th>类型</th><th>模态</th><th>块数</th><th>标签</th><th>上传人</th><th>更新时间</th><th>操作</th></tr></thead>
       <tbody id="docList"></tbody>
     </table>
     <div class="empty" id="emptyHint">暂无文档</div>
@@ -193,6 +195,11 @@ async function loadDocs() {
       tr.appendChild(tagTd);
       tr.appendChild(el('td', '', d.created_by));
       tr.appendChild(el('td', '', d.updated_at));
+      const opTd = el('td');
+      const delBtn = el('button', 'danger', '删除');
+      delBtn.onclick = () => deleteDoc(d.doc_key, d.name + d.ext, delBtn);
+      opTd.appendChild(delBtn);
+      tr.appendChild(opTd);
       tbody.appendChild(tr);
     }
   } catch (e) {
@@ -201,6 +208,20 @@ async function loadDocs() {
     empty.textContent = '文档列表加载失败: ' + e.message;
   }
 }
+async function deleteDoc(docKey, displayName, btn) {
+  if (!confirm(`确定删除文档「${displayName}」吗?\n将同时移除向量库中的知识块, 不可恢复。`)) return;
+  btn.disabled = true; btn.textContent = '删除中…';
+  try {
+    const resp = await fetch(`/api/docs/${encodeURIComponent(docKey)}?operator=${encodeURIComponent(uploader())}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || resp.status);
+    loadDocs();
+  } catch (e) {
+    alert('删除失败: ' + e.message);
+    btn.disabled = false; btn.textContent = '删除';
+  }
+}
+
 document.getElementById('refresh').onclick = loadDocs;
 loadDocs();
 </script>

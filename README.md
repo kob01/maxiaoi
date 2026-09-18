@@ -21,7 +21,7 @@ MCP 工具调用、A2A 专业智能体委派。
           │ BM25+Rerank  │  │ (FastMCP)     │   │ (LangGraph+MCP)│
           └──────────────┘  └───────────────┘   └────────────────┘
                     ├──── LLM: DeepSeek API (deepseek-flash) ────┤
-                    └──── 底座: Ollama (bge-m3 / bge-reranker-v2-m3 / qwen3-vl) ────┘
+                    └──── 底座: Ollama (bge-m3 / bge-reranker-v2-m3 / glm-ocr) ────┘
 ```
 
 A2A 遵循 Agent2Agent 协议:Agent Card 发布于 `/.well-known/agent-card.json`,
@@ -80,7 +80,7 @@ embedding/rerank/图片解析模型:
 ```bash
 ollama pull bge-m3
 ollama pull dengcao/bge-reranker-v2-m3
-ollama pull qwen3-vl        # 图片/截图解析需要
+ollama pull glm-ocr         # 图片/截图解析需要
 ```
 
 ### Docker Compose 启动(推荐)

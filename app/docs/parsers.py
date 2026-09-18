@@ -7,8 +7,8 @@ chunks. Supported types:
 - text:  txt / md (md split by headings) / pdf (per real page) / docx
          (split by Heading styles) / pptx (per slide) / xlsx (per sheet)
 - video transcripts: srt / vtt / *.transcript.txt (timeline merged)
-- images: jpg / jpeg / png / webp / bmp -> captioned by the local vision
-  model (qwen3-vl via Ollama) so image content becomes searchable text.
+- images: jpg / jpeg / png / webp / bmp -> captioned by the local OCR
+  model (glm-ocr via Ollama) so image content becomes searchable text.
 """
 
 from __future__ import annotations
@@ -228,7 +228,7 @@ def _compress_image(path: Path) -> bytes:
 
 
 async def _parse_image(path: Path) -> list[ParsedBlock]:
-    """Caption an image with the local vision model (qwen3-vl)."""
+    """Caption an image with the local OCR model (glm-ocr)."""
     settings = get_settings()
     try:
         data = _compress_image(path)
