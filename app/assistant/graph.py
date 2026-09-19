@@ -16,14 +16,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal, TypedDict
 
+from langchain.agents import create_agent
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import create_react_agent
 
 from app.assistant.a2a_client import get_a2a_pool
 from app.assistant.intent import IntentRecognizer
-from app.assistant.memory import get_memory_store
 from app.assistant.mcp_client import get_mcp_pool
+from app.assistant.memory import get_memory_store
 from app.assistant.prompts import DIRECT_PROMPT, KB_ANSWER_PROMPT
 from app.config import get_settings
 from app.llm import get_chat_model
@@ -143,7 +143,7 @@ class AssistantOrchestrator:
                 "route": "mcp_tool", "target": target,
             }
 
-        agent = create_react_agent(self._llm, tools)
+        agent = create_agent(self._llm, tools)
         task = f"[employee_id={state['user_id']}] {state['message']}"
         self._audit.log(state["trace_id"], "assistant", "mcp_dispatch", {"server": target}, state["session_id"])
         result = await agent.ainvoke({"messages": [("user", task)]})
@@ -270,6 +270,21 @@ class AssistantOrchestrator:
             }
         )
         intent = final.get("intent") or IntentResult(intent=IntentType.CHITCHAT)
+        self._audit.log(
+            trace_id,
+            "handle",
+            "final",
+            {
+                "intent": intent.intent,
+                "confidence": intent.confidence,
+                "reason": intent.reason,
+                "answer": final["answer"],
+                "route": final.get("route", "direct"),
+                "target": final.get("target"),
+                "_memory": self._memory.history_text(req.session_id),
+            },
+            req.session_id,
+        )
         return ChatResponse(
             session_id=req.session_id,
             answer=mask_text(final["answer"]),

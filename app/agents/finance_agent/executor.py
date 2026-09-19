@@ -15,13 +15,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from langchain_core.messages import AIMessage
-from langgraph.prebuilt import create_react_agent
-from langchain_mcp_adapters.client import MultiServerMCPClient
-
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
+from langchain.agents import create_agent
+from langchain_core.messages import AIMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app.config import get_settings
 from app.llm import get_chat_model
@@ -104,7 +103,7 @@ class FinanceAgent:
                 self._tools = await client.get_tools()
             # 权限Mask: 与编排层共用同一张角色×工具白名单矩阵 (硬控制)。
             tools = filter_tools_for_role(role, "finance", self._tools)
-            self._agents[role] = create_react_agent(
+            self._agents[role] = create_agent(
                 self._llm, tools, prompt=_build_role_prompt(role)
             )
         return self._agents[role]

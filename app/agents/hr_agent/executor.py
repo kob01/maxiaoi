@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_core.messages import AIMessage
-from langgraph.prebuilt import create_react_agent
-from langchain_mcp_adapters.client import MultiServerMCPClient
-
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
+from langchain.agents import create_agent
+from langchain_core.messages import AIMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app.config import get_settings
 from app.llm import get_chat_model
@@ -44,7 +43,7 @@ class HRAgent:
                 {"hr": {"url": self._settings.hr_mcp_url, "transport": "streamable_http"}}
             )
             tools = await client.get_tools()
-            self._agent = create_react_agent(self._llm, tools, prompt=SYSTEM_PROMPT)
+            self._agent = create_agent(self._llm, tools, prompt=SYSTEM_PROMPT)
         return self._agent
 
     async def invoke(self, user_text: str) -> str:
