@@ -121,6 +121,24 @@ uv run uvicorn app.main:app --port 8000
 uv run python -m scripts.ingest_knowledge --dir ./data/knowledge
 ```
 
+### LangGraph Studio + LangSmith 可视化调试(仅本地开发)
+
+生产容器默认关闭 tracing(`LANGSMITH_TRACING=false`), 对话数据不会上传; 以下能力仅在开发机启用。
+
+```bash
+# 1. 在 .env 中开启并填入你在 https://smith.langchain.com 申请的密钥
+#    LANGSMITH_TRACING=true
+#    LANGSMITH_API_KEY=ls_...
+
+# 2. 启动 Studio 本地 dev server (图定义见 langgraph.json -> assistant)
+uv run langgraph dev
+# 自动打开浏览器进入 LangGraph Studio, 可可视化编辑/运行编排图、
+# 单节点调试、断点回放; 每次运行同时作为 trace 上报 LangSmith 项目 mxi-assistant
+```
+
+- `uv sync` 已自动安装 dev 组依赖(`langgraph-cli[inmem]`), 不会进入生产镜像(Dockerfile 用 `--no-dev`)。
+- LangSmith trace 与现有 `audit.jsonl` 全链路审计互补: 前者面向开发调试/评估, 后者面向合规留痕。
+
 ## 端到端链路("我要报销")
 
 1. `POST /api/chat` → Assistant 载入会话记忆(短期窗口 + 长期摘要)

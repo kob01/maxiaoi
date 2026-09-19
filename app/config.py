@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # 敏感项对应的 Docker secret 文件(BuildKit/compose secrets 挂载路径)
 _SECRET_FILES = {
     "mysql_password": "/run/secrets/mysql_password",
+    "langsmith_api_key": "/run/secrets/langsmith_api_key",
     "deepseek_api_key": "/run/secrets/deepseek_api_key",
 }
 
@@ -83,7 +84,15 @@ class Settings(BaseSettings):
     # Security
     audit_log_path: str = "./logs/audit.jsonl"
 
-    @field_validator("mysql_password", "deepseek_api_key", mode="after")
+    # LangSmith / LangGraph Studio (仅本地开发环境启用; 生产容器默认关闭)
+    # 开启后 trace 会上传到 langsmith_endpoint 指向的服务, 含对话内容,
+    # 受内网合规约束: 生产环境务必保持 LANGSMITH_TRACING=false。
+    langsmith_tracing: bool = False
+    langsmith_api_key: str = ""
+    langsmith_project: str = "mxi-assistant"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+
+    @field_validator("mysql_password", "deepseek_api_key", "langsmith_api_key", mode="after")
     @classmethod
     def _read_from_secret_file(cls, value: str, info) -> str:
         """环境变量/.env 未提供时, 回退读取 compose secret 文件。"""

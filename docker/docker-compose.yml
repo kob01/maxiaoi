@@ -13,6 +13,8 @@ secrets:
     file: ./secrets/mysql_password.txt
   deepseek_api_key:
     file: ./secrets/deepseek_api_key.txt
+  langsmith_api_key:
+    file: ./secrets/langsmith_api_key.txt
 
 services:
   hr-mcp:
@@ -91,6 +93,7 @@ services:
     secrets:
       - mysql_password
       - deepseek_api_key
+      - langsmith_api_key
     volumes:
       - ../data:/data
       - ../logs:/data/logs

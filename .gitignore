@@ -7,6 +7,7 @@ wheels/
 *.egg-info
 
 # .gitignore
+.langgraph_api/
 .venv/
 *.pyc
 logs/

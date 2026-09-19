@@ -32,6 +32,15 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
 ]
 
+# 本地开发依赖 (不进生产镜像: Dockerfile 使用 `uv sync --no-dev`)
+[dependency-groups]
+dev = [
+    # LangGraph Studio 本地 dev server (内存版 in-memory 后端)
+    "langgraph-cli[inmem]>=0.2.0",
+    # Windows 下 langgraph dev 的 structlog 彩色控制台渲染器依赖 colorama
+    "colorama>=0.4.6",
+]
+
 [tool.uv]
 # 设置默认镜像源（替代官方 PyPI）
 index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"

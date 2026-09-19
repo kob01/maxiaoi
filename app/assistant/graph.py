@@ -73,13 +73,14 @@ class AssistantOrchestrator:
     # ---------------- graph nodes ----------------
 
     async def load_context(self, state: AssistantState) -> dict[str, Any]:
-        history = self._memory.history_text(state["session_id"])
+        history = self._memory.history_text(state.get("session_id") or "")
         return {"history": history}
 
     async def classify_intent(self, state: AssistantState) -> dict[str, Any]:
         intent = await self._intent.classify(state["message"], state.get("history", ""))
         self._audit.log(
-            state["trace_id"], "assistant", "intent_classified", intent.model_dump(), state["session_id"]
+            state.get("trace_id") or new_trace_id(), "assistant", "intent_classified",
+            intent.model_dump(), state.get("session_id"),
         )
         return {"intent": intent, "target": intent.target}
 
@@ -104,8 +105,8 @@ class AssistantOrchestrator:
         )
         resp = await self._llm.ainvoke(prompt)
         self._audit.log(
-            state["trace_id"], "assistant", "kb_answered",
-            {"chunks": [c.chunk_id for c in chunks]}, state["session_id"],
+            state.get("trace_id") or "", "assistant", "kb_answered",
+            {"chunks": [c.chunk_id for c in chunks]}, state.get("session_id"),
         )
         docs_meta = [
             {
@@ -123,29 +124,30 @@ class AssistantOrchestrator:
         """Run a small ReAct loop over the target domain's MCP tools."""
         intent = state["intent"]
         target = intent.target if intent and intent.target else "hr"
+        role = self._role_of(state)
         try:
-            check_mcp_permission(state["role"], target, "*")
+            check_mcp_permission(role, target, "*")
         except PermissionDenied as exc:
             return {"answer": f"权限不足:{exc}", "route": "mcp_tool", "target": target}
 
         all_tools = await get_mcp_pool().get_tools(target)
         # 权限Mask: 按角色×工具白名单矩阵过滤, 隐藏工具对 LLM 不可见、不可调。
-        tools = filter_tools_for_role(state["role"], target, all_tools)
+        tools = filter_tools_for_role(role, target, all_tools)
         visible_names = [t.name for t in tools]
         self._audit.log(
-            state["trace_id"], "assistant", "tools_filtered",
-            {"server": target, "role": state["role"].value, "visible_tools": visible_names},
-            state["session_id"],
+            state.get("trace_id") or "", "assistant", "tools_filtered",
+            {"server": target, "role": role.value, "visible_tools": visible_names},
+            state.get("session_id"),
         )
         if not tools:
             return {
-                "answer": f"权限不足: 角色 {state['role'].value} 在 {target} 域无可用工具。",
+                "answer": f"权限不足: 角色 {role.value} 在 {target} 域无可用工具。",
                 "route": "mcp_tool", "target": target,
             }
 
         agent = create_agent(self._llm, tools)
-        task = f"[employee_id={state['user_id']}] {state['message']}"
-        self._audit.log(state["trace_id"], "assistant", "mcp_dispatch", {"server": target}, state["session_id"])
+        task = f"[employee_id={state.get('user_id') or 'anonymous'}] {state['message']}"
+        self._audit.log(state.get("trace_id") or "", "assistant", "mcp_dispatch", {"server": target}, state.get("session_id"))
         result = await agent.ainvoke({"messages": [("user", task)]})
         answer = "工具调用未产生回复。"
         for msg in reversed(result["messages"]):
@@ -159,21 +161,22 @@ class AssistantOrchestrator:
         intent = state["intent"]
         target = intent.target if intent and intent.target else "hr"
         agent_name = f"{target}_agent"
+        role = self._role_of(state)
         try:
-            check_agent_permission(state["role"], agent_name)
+            check_agent_permission(role, agent_name)
         except PermissionDenied as exc:
             return {"answer": f"权限不足:{exc}", "route": "a2a_agent", "target": target}
 
         # Carry employee identity + recent context so the specialist can act directly.
-        task = f"[employee_id={state['user_id']}] {state['message']}"
+        task = f"[employee_id={state.get('user_id') or 'anonymous'}] {state['message']}"
         if state.get("history"):
             task = f"对话背景:\n{state['history']}\n\n当前请求: {task}"
-        self._audit.log(state["trace_id"], "assistant", "a2a_delegate", {"agent": agent_name}, state["session_id"])
+        self._audit.log(state.get("trace_id") or "", "assistant", "a2a_delegate", {"agent": agent_name}, state.get("session_id"))
         # 可信身份经协议级 metadata 结构化下发 (而非文本标签), 供专业智能体做权限分级。
         answer = await get_a2a_pool().send(
             target,
             task,
-            metadata={"user_id": state["user_id"], "role": state["role"].value},
+            metadata={"user_id": state.get("user_id") or "anonymous", "role": role.value},
         )
         return {"answer": answer, "route": "a2a_agent", "target": target}
 
@@ -185,14 +188,25 @@ class AssistantOrchestrator:
 
     async def persist_memory(self, state: AssistantState) -> dict[str, Any]:
         masked_answer = mask_text(state["answer"])
-        await self._memory.append(state["session_id"], mask_text(state["message"]), masked_answer)
+        await self._memory.append(state.get("session_id") or "", mask_text(state["message"]), masked_answer)
         self._audit.log(
-            state["trace_id"], "assistant", "turn_completed",
-            {"route": state.get("route"), "answer_len": len(state["answer"])}, state["session_id"],
+            state.get("trace_id") or "", "assistant", "turn_completed",
+            {"route": state.get("route"), "answer_len": len(state["answer"])}, state.get("session_id"),
         )
         return {}
 
     # ---------------- routing ----------------
+
+    @staticmethod
+    def _role_of(state: AssistantState) -> Role:
+        """Normalise role; LangGraph Studio may pass a plain string."""
+        role = state.get("role")
+        if isinstance(role, Role):
+            return role
+        try:
+            return Role(str(role))
+        except ValueError:
+            return Role.EMPLOYEE
 
     @staticmethod
     def _route_by_intent(state: AssistantState) -> str:
@@ -309,3 +323,15 @@ def get_orchestrator() -> AssistantOrchestrator:
     if _orchestrator is None:
         _orchestrator = AssistantOrchestrator()
     return _orchestrator
+
+
+def get_graph():
+    """Graph factory exposed to LangGraph Studio (see langgraph.json).
+
+    Enables LangSmith tracing first so every Studio run is captured as a
+    trace under the configured project.
+    """
+    from app.tracing import init_tracing
+
+    init_tracing()
+    return get_orchestrator()._graph

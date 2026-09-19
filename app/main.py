@@ -29,7 +29,11 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Init MySQL schema at startup (getpass password prompt happens here)."""
+    """Init MySQL metadata schema at startup (getpass password prompt happens here)."""
+    from app.tracing import init_tracing
+
+    if init_tracing():
+        logger.info("LangSmith tracing active for this gateway process")
     try:
         from app.db.session import init_schema
 

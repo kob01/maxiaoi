@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "assistant": "./app/assistant/graph.py:get_graph"
+  },
+  "env": ".env",
+  "python_version": "3.11"
+}
